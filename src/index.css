@@ -1,0 +1,122 @@
+:root {
+  font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif;
+  color: #273444;
+  background: #f3f5f6;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+  background-color: #f3f5f6;
+  background-image:
+    linear-gradient(rgba(153, 157, 155, 0.38), rgb(243 247 245 / 38%)),
+    url("");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+body::before {
+  position: fixed;
+  z-index: 0;
+  top: 4%;
+  left: 3%;
+  width: min(38vw, 430px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgb(36 122 104 / 7%) 0%,
+    rgb(36 122 104 / 4%) 42%,
+    transparent 72%
+  );
+  filter: blur(14px);
+  content: "";
+  pointer-events: none;
+  animation: ambient-drift-one 10s ease-in-out infinite alternate;
+}
+
+body::after {
+  position: fixed;
+  z-index: 0;
+  right: 2%;
+  bottom: 1%;
+  width: min(42vw, 500px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgb(148 163 184 / 8%) 0%,
+    rgb(36 122 104 / 3%) 46%,
+    transparent 72%
+  );
+  filter: blur(18px);
+  content: "";
+  pointer-events: none;
+  animation: ambient-drift-two 13s ease-in-out infinite alternate;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+@keyframes ambient-drift-one {
+  from {
+    transform: translate3d(-12px, -8px, 0) scale(0.94);
+  }
+
+  to {
+    transform: translate3d(62px, 48px, 0) scale(1.12);
+  }
+}
+
+@keyframes ambient-drift-two {
+  from {
+    transform: translate3d(20px, -10px, 0) scale(1.08);
+  }
+
+  to {
+    transform: translate3d(-64px, 52px, 0) scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after {
+    animation: none;
+  }
+}
+
+@media (max-width: 700px) {
+  body {
+    background-attachment: scroll;
+  }
+}
