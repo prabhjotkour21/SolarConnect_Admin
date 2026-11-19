@@ -126,7 +126,6 @@ function App() {
       setIsUploading(false);
     }
   }
-
   async function handleLoadFiles() {
     setIsLoadingList(true);
     setListError('');
