@@ -112,7 +112,7 @@ export async function uploadFirmwareFile(
   }
 
   const fileName = file.name.replace(/[^\x20-\x7E]/g, '_');
-  const response = await fetch('/api/admin/firmwares', {
+  const response = await fetch('/api/admin/firmwares/create', {
     method: 'POST',
     headers: {
       ...getAdminHeaders(adminApiKey),
