@@ -322,6 +322,85 @@
   font-size: 14px;
 }
 
+.prepare-card {
+  margin-bottom: 20px;
+}
+
+.final-upload-card.locked {
+  background: rgb(248 250 249 / 92%);
+  border-color: #e3ebe7;
+}
+
+.prepared-file {
+  margin-top: 18px;
+  padding: 14px;
+  color: #36534a;
+  background: #eff7f3;
+  border: 1px solid #d8e9e1;
+  border-radius: 9px;
+}
+
+.prepared-file-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.prepared-file-hash {
+  margin: 8px 0 0;
+  color: #526b61;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.secondary-button {
+  margin-top: 12px;
+  padding: 10px 14px;
+  color: #286d5e;
+  background: #ffffff;
+  border: 1px solid #c5d8d1;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #eaf4f1;
+  border-color: #8db9aa;
+}
+
+.secondary-button:focus-visible {
+  outline: 3px solid rgb(36 122 104 / 25%);
+  outline-offset: 3px;
+}
+
+.secondary-button:disabled {
+  color: #648277;
+  background: #e7f2ed;
+  cursor: default;
+}
+
+.save-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 13px;
+  color: #36534a;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.save-confirmation input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: #247a68;
+}
+
 .login-form {
   display: grid;
   gap: 18px;
