@@ -4,8 +4,11 @@ import { uploadSetupFile } from './services/setupFileApi';
 import {
   getAllFirmwareFiles,
   getAllSetupFiles,
+  prepareAdminFile,
+  savePreparedFileLocally,
   uploadFirmwareFile,
   type AdminFileRecord,
+  type PreparedAdminFile,
 } from './services/adminFilesApi';
 
 const ADMIN_USERNAME = 'admin';
@@ -50,6 +53,16 @@ function App() {
   const [loginError, setLoginError] = useState('');
   const [activePage, setActivePage] = useState<AdminPage>('setup-upload');
   const [file, setFile] = useState<File | null>(null);
+  const [productVersion, setProductVersion] = useState('');
+  const [preparedFile, setPreparedFile] = useState<PreparedAdminFile | null>(null);
+  const [isPreparingFile, setIsPreparingFile] = useState(false);
+  const [isSavingPreparedFile, setIsSavingPreparedFile] = useState(false);
+  const [isPreparedFileSaved, setIsPreparedFileSaved] = useState(false);
+  const [needsSaveConfirmation, setNeedsSaveConfirmation] = useState(false);
+  const [prepareMessage, setPrepareMessage] = useState('');
+  const [prepareMessageType, setPrepareMessageType] = useState<
+    'success' | 'error' | 'info'
+  >('info');
   const [adminApiKey, setAdminApiKey] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -77,6 +90,11 @@ function App() {
     setPassword('');
     setAdminApiKey('');
     setFile(null);
+    setProductVersion('');
+    setPreparedFile(null);
+    setIsPreparedFileSaved(false);
+    setNeedsSaveConfirmation(false);
+    setPrepareMessage('');
     setMessage('');
     setFileRecords(null);
     setActivePage('setup-upload');
@@ -86,6 +104,11 @@ function App() {
   function handlePageChange(page: AdminPage) {
     setActivePage(page);
     setFile(null);
+    setProductVersion('');
+    setPreparedFile(null);
+    setIsPreparedFileSaved(false);
+    setNeedsSaveConfirmation(false);
+    setPrepareMessage('');
     setMessage('');
     setFileRecords(null);
     setListError('');
@@ -93,15 +116,84 @@ function App() {
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setFile(event.target.files?.[0] ?? null);
+    setPreparedFile(null);
+    setIsPreparedFileSaved(false);
+    setNeedsSaveConfirmation(false);
+    setPrepareMessage('');
     setMessage('');
+  }
+
+  async function handlePrepareFile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file) {
+      setPrepareMessageType('error');
+      setPrepareMessage('Select a file to prepare first.');
+      return;
+    }
+
+    setIsPreparingFile(true);
+    setPreparedFile(null);
+    setIsPreparedFileSaved(false);
+    setNeedsSaveConfirmation(false);
+    setPrepareMessageType('info');
+    setPrepareMessage('Preparing file and calculating SHA-256...');
+    try {
+      const prepared = await prepareAdminFile(
+        file,
+        activePage === 'setup-upload' ? 'setup' : 'firmware',
+        productVersion,
+        adminApiKey,
+      );
+      setPreparedFile(prepared);
+      setPrepareMessage(
+        'SHA-256 was added and verified. Save the prepared file locally to enable the upload section.',
+      );
+    } catch (error) {
+      setPrepareMessageType('error');
+      setPrepareMessage(
+        error instanceof Error ? error.message : 'File preparation failed.',
+      );
+    } finally {
+      setIsPreparingFile(false);
+    }
+  }
+
+  async function handleSavePreparedFile() {
+    if (!preparedFile || isSavingPreparedFile) return;
+
+    setIsSavingPreparedFile(true);
+    setPrepareMessageType('info');
+    try {
+      const saved = await savePreparedFileLocally(preparedFile.file);
+      setNeedsSaveConfirmation(!saved);
+      setIsPreparedFileSaved(saved);
+      setPrepareMessageType(saved ? 'success' : 'info');
+      setPrepareMessage(
+        saved
+          ? `Prepared file saved on this computer as ${preparedFile.file.name}. The original file was not changed.`
+          : `A download was started for ${preparedFile.file.name}. Confirm below after you save it locally.`,
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setPrepareMessageType('info');
+        setPrepareMessage('Save cancelled. Save the prepared file to enable upload.');
+      } else {
+        setPrepareMessageType('error');
+        setPrepareMessage(
+          error instanceof Error ? error.message : 'Could not save the prepared file.',
+        );
+      }
+    } finally {
+      setIsSavingPreparedFile(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!file) {
+    if (!preparedFile || !isPreparedFileSaved) {
       setMessageType('error');
-      setMessage('Please select a file first.');
+      setMessage('Prepare and save the file locally before uploading.');
       return;
     }
 
@@ -111,8 +203,8 @@ function App() {
     try {
       const result =
         activePage === 'firmware-upload'
-          ? await uploadFirmwareFile(file, adminApiKey)
-          : await uploadSetupFile(file, adminApiKey);
+          ? await uploadFirmwareFile(preparedFile.file, adminApiKey)
+          : await uploadSetupFile(preparedFile.file, adminApiKey);
       setMessageType('success');
       setMessage(
         `Upload successful. Product version: ${result.productVersion}. SHA-256: ${result.sha256}`,
@@ -352,54 +444,195 @@ function App() {
             )}
           </section>
         ) : (
-          <section className="upload-card">
-            <h2>
-              <HoverText text={currentPage.heading} />
-            </h2>
-            <p className="help-text">
-              <HoverText text="The backend will validate the selected file." />
-            </p>
-
-            <form onSubmit={handleSubmit}>
-              <label className="file-picker">
-                <span className="file-picker-title">
-                  <HoverText text="Select a file" />
-                </span>
-                <input
-                  key={activePage}
-                  type="file"
-                  onChange={handleFileChange}
-                  disabled={isUploading}
+          <>
+            <section className="upload-card prepare-card">
+              <h2>
+                <HoverText
+                  text={
+                    activePage === 'setup-upload'
+                      ? 'Prepare setup file'
+                      : 'Prepare firmware file'
+                  }
                 />
-              </label>
+              </h2>
+              <p className="help-text">
+                <HoverText
+                  text={
+                    activePage === 'setup-upload'
+                      ? 'Choose the original AppSetup.bin. Its embedded product version must match the value below.'
+                      : 'Choose the raw firmware image without a product-version prefix or SHA-256 footer.'
+                  }
+                />
+              </p>
 
-              {file && (
+              <form onSubmit={handlePrepareFile}>
+                <label className="login-field">
+                  <span>
+                    <HoverText text="Product version" />
+                  </span>
+                  <input
+                    type="text"
+                    value={productVersion}
+                    onChange={(event) => {
+                      setProductVersion(event.target.value);
+                      setPreparedFile(null);
+                      setIsPreparedFileSaved(false);
+                      setNeedsSaveConfirmation(false);
+                      setPrepareMessage('');
+                    }}
+                    placeholder="For example, INV3P001"
+                    maxLength={8}
+                    required
+                    disabled={isPreparingFile || isUploading}
+                  />
+                </label>
+
+                <label className="file-picker">
+                  <span className="file-picker-title">
+                    <HoverText text="Select the original file" />
+                  </span>
+                  <input
+                    key={activePage}
+                    type="file"
+                    accept={activePage === 'setup-upload' ? '.bin,.txt' : undefined}
+                    onChange={handleFileChange}
+                    disabled={isPreparingFile || isUploading}
+                  />
+                </label>
+
+                {file && (
+                  <div className="selected-file">
+                    <span className="selected-file-mark" aria-hidden="true">✓</span>
+                    <span className="selected-file-name" title={file.name}>
+                      <HoverText text={file.name} />
+                    </span>
+                    <span className="file-size">
+                      <HoverText text={`${(file.size / 1024).toFixed(1)} KB`} />
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  className="upload-button"
+                  type="submit"
+                  disabled={
+                    !file ||
+                    !productVersion.trim() ||
+                    !adminApiKey.trim() ||
+                    isPreparingFile ||
+                    isUploading
+                  }
+                >
+                  <HoverText
+                    text={isPreparingFile ? 'Preparing...' : 'Prepare and add SHA-256'}
+                  />
+                </button>
+
+                {preparedFile && (
+                  <div className="prepared-file">
+                    <p className="prepared-file-title">
+                      Prepared and verified: {preparedFile.file.name}
+                    </p>
+                    <p className="prepared-file-hash">
+                      SHA-256: {preparedFile.sha256}
+                    </p>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void handleSavePreparedFile()}
+                      disabled={isSavingPreparedFile || isPreparedFileSaved}
+                    >
+                      {isSavingPreparedFile
+                        ? 'Saving...'
+                        : isPreparedFileSaved
+                          ? 'Saved on this computer'
+                          : 'Save prepared file locally'}
+                    </button>
+                    {needsSaveConfirmation && (
+                      <label className="save-confirmation">
+                        <input
+                          type="checkbox"
+                          checked={isPreparedFileSaved}
+                          onChange={(event) => {
+                            setIsPreparedFileSaved(event.target.checked);
+                            setPrepareMessageType(
+                              event.target.checked ? 'success' : 'info',
+                            );
+                            setPrepareMessage(
+                              event.target.checked
+                                ? 'Local save confirmed. The upload section is enabled.'
+                                : 'Confirm the local save to enable the upload section.',
+                            );
+                          }}
+                        />
+                        <span>
+                          I saved the downloaded prepared file on this computer.
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {prepareMessage && (
+                  <p className={`form-message ${prepareMessageType}`} role="status">
+                    <HoverText text={prepareMessage} />
+                  </p>
+                )}
+              </form>
+            </section>
+
+            <section
+              className={`upload-card final-upload-card${!isPreparedFileSaved ? ' locked' : ''}`}
+              aria-disabled={!isPreparedFileSaved}
+            >
+              <h2>
+                <HoverText text={currentPage.heading} />
+              </h2>
+              <p className="help-text">
+                <HoverText
+                  text={
+                    isPreparedFileSaved
+                      ? 'The prepared file is ready. Uploading stores it in the backend.'
+                      : 'Prepare and save the file above to enable this upload section.'
+                  }
+                />
+              </p>
+
+              {preparedFile && (
                 <div className="selected-file">
                   <span className="selected-file-mark" aria-hidden="true">✓</span>
-                  <span className="selected-file-name" title={file.name}>
-                    <HoverText text={file.name} />
+                  <span className="selected-file-name" title={preparedFile.file.name}>
+                    <HoverText text={preparedFile.file.name} />
                   </span>
                   <span className="file-size">
-                    <HoverText text={`${(file.size / 1024).toFixed(1)} KB`} />
+                    <HoverText
+                      text={`${(preparedFile.size / 1024).toFixed(1)} KB`}
+                    />
                   </span>
                 </div>
               )}
 
-              <button
-                className="upload-button"
-                type="submit"
-                disabled={!file || !adminApiKey.trim() || isUploading}
-              >
-                <HoverText text={isUploading ? 'Uploading...' : 'Upload file'} />
-              </button>
+              <form onSubmit={handleSubmit}>
+                <button
+                  className="upload-button"
+                  type="submit"
+                  disabled={
+                    !isPreparedFileSaved ||
+                    !adminApiKey.trim() ||
+                    isUploading
+                  }
+                >
+                  <HoverText text={isUploading ? 'Uploading...' : 'Upload file'} />
+                </button>
 
-              {message && (
-                <p className={`form-message ${messageType}`} role="status">
-                  <HoverText text={message} />
-                </p>
-              )}
-            </form>
-          </section>
+                {message && (
+                  <p className={`form-message ${messageType}`} role="status">
+                    <HoverText text={message} />
+                  </p>
+                )}
+              </form>
+            </section>
+          </>
         )}
       </div>
 
@@ -429,7 +662,9 @@ function App() {
             onChange={(event) => setAdminApiKey(event.target.value)}
             placeholder="Enter API key"
           />
-          <span className="input-hint">Used for backend requests only.</span>
+          <span className="input-hint">
+            Required for preparation and final upload requests.
+          </span>
         </label>
 
         <button className="sidebar-logout" type="button" onClick={handleLogout}>
