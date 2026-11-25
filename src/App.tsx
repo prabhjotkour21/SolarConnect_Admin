@@ -141,12 +141,16 @@ function App() {
       const prepared = await prepareAdminFile(
         file,
         activePage === 'setup-upload' ? 'setup' : 'firmware',
-        productVersion,
         adminApiKey,
+        activePage === 'firmware-upload' ? productVersion : undefined,
       );
       setPreparedFile(prepared);
       setPrepareMessage(
-        'SHA-256 was added and verified. Save the prepared file locally to enable the upload section.',
+        prepared.setupVersion
+          ? `Setup version ${prepared.setupVersion} and product version ${prepared.productVersion} were detected. SHA-256 was appended and verified. Save the prepared file locally to enable the upload section.`
+          : prepared.firmwareVersion
+            ? `Firmware version ${prepared.firmwareVersion} and product version ${prepared.productVersion} were detected. SHA-256 was appended and verified. Save the prepared file locally to enable the upload section.`
+          : 'SHA-256 was added and verified. Save the prepared file locally to enable the upload section.',
       );
     } catch (error) {
       setPrepareMessageType('error');
@@ -203,11 +207,15 @@ function App() {
     try {
       const result =
         activePage === 'firmware-upload'
-          ? await uploadFirmwareFile(preparedFile.file, adminApiKey)
+          ? await uploadFirmwareFile(
+              preparedFile.file,
+              adminApiKey,
+              preparedFile.productVersion,
+            )
           : await uploadSetupFile(preparedFile.file, adminApiKey);
       setMessageType('success');
       setMessage(
-        `Upload successful. Product version: ${result.productVersion}. SHA-256: ${result.sha256}`,
+        `Upload successful. Product version: ${result.productVersion}.${result.setupVersion ? ` Setup version: ${result.setupVersion}.` : ''}${'firmwareVersion' in result && result.firmwareVersion ? ` Firmware version: ${result.firmwareVersion}.` : ''} SHA-256: ${result.sha256}`,
       );
     } catch (error) {
       setMessageType('error');
@@ -422,6 +430,8 @@ function App() {
                       <tr>
                         <th>File name</th>
                         <th>Product version</th>
+                        {activePage === 'setup-list' && <th>Setup version</th>}
+                        {activePage === 'firmware-list' && <th>Firmware version</th>}
                         <th>Size</th>
                         <th>SHA-256</th>
                         <th>Uploaded</th>
@@ -432,6 +442,12 @@ function App() {
                         <tr key={`${record.productVersion}-${record.createdAt}-${index}`}>
                           <td>{record.fileName}</td>
                           <td>{record.productVersion}</td>
+                          {activePage === 'setup-list' && (
+                            <td>{record.setupVersion ?? 'Legacy'}</td>
+                          )}
+                          {activePage === 'firmware-list' && (
+                            <td>{record.firmwareVersion ?? 'Legacy'}</td>
+                          )}
                           <td>{(record.size / 1024).toFixed(1)} KB</td>
                           <td className="hash-cell">{record.sha256}</td>
                           <td>{new Date(record.createdAt).toLocaleString()}</td>
@@ -459,33 +475,35 @@ function App() {
                 <HoverText
                   text={
                     activePage === 'setup-upload'
-                      ? 'Choose the original AppSetup.bin. Its embedded product version must match the value below.'
-                      : 'Choose the raw firmware image without a product-version prefix or SHA-256 footer.'
+                      ? 'Choose the Setup file. Setup version and product version must already be in the file; Admin only appends SHA-256.'
+                      : 'Choose firmware bytes that begin with an 8-character ASCII firmware version, followed by the raw image. Keep the product version in the field below; Admin appends SHA-256.'
                   }
                 />
               </p>
 
               <form onSubmit={handlePrepareFile}>
-                <label className="login-field">
-                  <span>
-                    <HoverText text="Product version" />
-                  </span>
-                  <input
-                    type="text"
-                    value={productVersion}
-                    onChange={(event) => {
-                      setProductVersion(event.target.value);
-                      setPreparedFile(null);
-                      setIsPreparedFileSaved(false);
-                      setNeedsSaveConfirmation(false);
-                      setPrepareMessage('');
-                    }}
-                    placeholder="For example, INV3P001"
-                    maxLength={8}
-                    required
-                    disabled={isPreparingFile || isUploading}
-                  />
-                </label>
+                {activePage === 'firmware-upload' && (
+                  <label className="login-field">
+                    <span>
+                      <HoverText text="Product version" />
+                    </span>
+                    <input
+                      type="text"
+                      value={productVersion}
+                      onChange={(event) => {
+                        setProductVersion(event.target.value);
+                        setPreparedFile(null);
+                        setIsPreparedFileSaved(false);
+                        setNeedsSaveConfirmation(false);
+                        setPrepareMessage('');
+                      }}
+                      placeholder="For example, INV3P001"
+                      maxLength={8}
+                      required
+                      disabled={isPreparingFile || isUploading}
+                    />
+                  </label>
+                )}
 
                 <label className="file-picker">
                   <span className="file-picker-title">
@@ -517,7 +535,7 @@ function App() {
                   type="submit"
                   disabled={
                     !file ||
-                    !productVersion.trim() ||
+                    (activePage === 'firmware-upload' && !productVersion.trim()) ||
                     !adminApiKey.trim() ||
                     isPreparingFile ||
                     isUploading
