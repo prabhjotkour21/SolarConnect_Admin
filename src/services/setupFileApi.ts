@@ -1,5 +1,6 @@
 export interface SetupFileUploadResponse {
   productVersion: string;
+  setupVersion: string;
   sha256: string;
 }
 
@@ -9,6 +10,9 @@ function isUploadResponse(value: unknown): value is SetupFileUploadResponse {
     value !== null &&
     'productVersion' in value &&
     typeof value.productVersion === 'string' &&
+    'setupVersion' in value &&
+    typeof value.setupVersion === 'string' &&
+    /^[\x20-\x7e]{8}$/.test(value.setupVersion) &&
     'sha256' in value &&
     typeof value.sha256 === 'string'
   );
