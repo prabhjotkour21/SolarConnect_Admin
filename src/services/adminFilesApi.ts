@@ -1,5 +1,5 @@
 export interface AdminFileRecord {
-  productVersion: string;
+  productVersion?: string;
   firmwareVersion?: string;
   setupVersion?: string;
   sha256: string;
@@ -9,7 +9,7 @@ export interface AdminFileRecord {
 }
 
 export interface FileUploadResponse {
-  productVersion: string;
+  productVersion?: string;
   firmwareVersion?: string;
   setupVersion?: string;
   sha256: string;
@@ -20,7 +20,7 @@ export type AdminFileKind = 'setup' | 'firmware';
 export interface PreparedAdminFile {
   kind: AdminFileKind;
   file: File;
-  productVersion: string;
+  productVersion?: string;
   firmwareVersion?: string;
   setupVersion?: string;
   sha256: string;
@@ -48,12 +48,10 @@ function isFileUploadResponse(value: unknown): value is FileUploadResponse {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'productVersion' in value &&
-    typeof value.productVersion === 'string' &&
-    (!('firmwareVersion' in value) ||
-      (typeof value.firmwareVersion === 'string' &&
-        /^[\x20-\x7e]{8}$/.test(value.firmwareVersion) &&
-        value.firmwareVersion.trim().length > 0)) &&
+    'firmwareVersion' in value &&
+    typeof value.firmwareVersion === 'string' &&
+    /^[\x20-\x7e]{8}$/.test(value.firmwareVersion) &&
+    value.firmwareVersion.trim().length > 0 &&
     (!('setupVersion' in value) ||
       (typeof value.setupVersion === 'string' &&
         /^[\x20-\x7e]{8}$/.test(value.setupVersion))) &&
@@ -66,8 +64,7 @@ function isAdminFileRecord(value: unknown): value is AdminFileRecord {
   return (
     typeof value === 'object' &&
     value !== null &&
-    'productVersion' in value &&
-    typeof value.productVersion === 'string' &&
+    (!('productVersion' in value) || typeof value.productVersion === 'string') &&
     (!('firmwareVersion' in value) ||
       (typeof value.firmwareVersion === 'string' &&
         /^[\x20-\x7e]{8}$/.test(value.firmwareVersion) &&
@@ -154,17 +151,9 @@ export async function prepareAdminFile(
   sourceFile: File,
   kind: AdminFileKind,
   adminApiKey: string,
-  productVersion?: string,
 ): Promise<PreparedAdminFile> {
-  const requestedVersion = productVersion?.trim();
   if (!sourceFile.size) {
     throw new Error('The selected file is empty.');
-  }
-  if (
-    kind === 'firmware' &&
-    (!requestedVersion || !/^[\x20-\x7e]{1,8}$/.test(requestedVersion))
-  ) {
-    throw new Error('Product version must contain 1 to 8 ASCII characters.');
   }
 
   const headers: Record<string, string> = {
@@ -172,9 +161,6 @@ export async function prepareAdminFile(
     'Content-Type': 'application/octet-stream',
     'x-file-kind': kind,
   };
-  if (kind === 'firmware' && requestedVersion) {
-    headers['x-product-version'] = requestedVersion;
-  }
   const response = await fetch('/api/admin/files/prepare', {
     method: 'POST',
     headers,
@@ -208,13 +194,13 @@ export async function prepareAdminFile(
   const contentLength = response.headers.get('content-length');
   if (
     responseKind !== kind ||
-    responseVersion === null ||
-    (kind === 'firmware' && responseVersion !== requestedVersion) ||
     (kind === 'setup' &&
-      (responseSetupVersion === null ||
+      (responseVersion === null ||
+        responseSetupVersion === null ||
         !/^[\x20-\x7e]{8}$/.test(responseSetupVersion))) ||
     (kind === 'firmware' &&
-      (responseSetupVersion !== null ||
+      (responseVersion !== null ||
+        responseSetupVersion !== null ||
         responseFirmwareVersion === null ||
         !/^[\x20-\x7e]{8}$/.test(responseFirmwareVersion) ||
         responseFirmwareVersion.trim().length === 0)) ||
@@ -236,7 +222,7 @@ export async function prepareAdminFile(
     throw new Error('Prepared file size does not match the expected file size.');
   }
 
-  let detectedProductVersion: string;
+  let detectedProductVersion: string | undefined;
   let detectedFirmwareVersion: string | undefined;
   let detectedSetupVersion: string | undefined;
   if (kind === 'setup') {
@@ -279,10 +265,6 @@ export async function prepareAdminFile(
       throw new Error('Preparation changed the selected Setup file bytes.');
     }
   } else {
-    if (!requestedVersion) {
-      throw new Error('Product version is required to prepare firmware.');
-    }
-    detectedProductVersion = requestedVersion;
     const firmwareVersionBytes = sourceBytes.subarray(0, 8);
     if (
       firmwareVersionBytes.length !== 8 ||
@@ -292,11 +274,8 @@ export async function prepareAdminFile(
       throw new Error('Selected firmware file must start with an 8-character ASCII firmware version.');
     }
     detectedFirmwareVersion = String.fromCharCode(...firmwareVersionBytes);
-    if (
-      responseFirmwareVersion !== detectedFirmwareVersion ||
-      responseVersion !== detectedProductVersion
-    ) {
-      throw new Error('Prepared file firmware or product version does not match the selected file.');
+    if (responseFirmwareVersion !== detectedFirmwareVersion) {
+      throw new Error('Prepared file firmware version does not match the selected file.');
     }
     if (
       sourceBytes.some((byte, index) => preparedBytes[index] !== byte)
@@ -334,7 +313,7 @@ export async function prepareAdminFile(
   return {
     kind,
     file,
-    productVersion: detectedProductVersion,
+    ...(detectedProductVersion ? { productVersion: detectedProductVersion } : {}),
     ...(detectedFirmwareVersion ? { firmwareVersion: detectedFirmwareVersion } : {}),
     ...(detectedSetupVersion ? { setupVersion: detectedSetupVersion } : {}),
     sha256: calculatedHash,
@@ -372,24 +351,18 @@ export async function savePreparedFileLocally(file: File): Promise<boolean> {
 export async function uploadFirmwareFile(
   file: File,
   adminApiKey: string,
-  productVersion: string,
 ): Promise<FileUploadResponse> {
   if (file.size === 0) {
     throw new Error('The selected file is empty.');
   }
 
   const fileName = file.name.replace(/[^\x20-\x7E]/g, '_');
-  const requestedVersion = productVersion.trim();
-  if (!/^[\x20-\x7e]{1,8}$/.test(requestedVersion)) {
-    throw new Error('Product version must contain 1 to 8 ASCII characters.');
-  }
   const response = await fetch('/api/admin/firmwares/create', {
     method: 'POST',
     headers: {
       ...getAdminHeaders(adminApiKey),
       'Content-Type': 'application/octet-stream',
       'x-file-name': fileName,
-      'x-product-version': requestedVersion,
     },
     body: file,
   });
@@ -401,11 +374,8 @@ export async function uploadFirmwareFile(
   if (!isFileUploadResponse(result)) {
     throw new Error('The backend upload response has an unexpected format.');
   }
-  if (
-    result.productVersion !== requestedVersion ||
-    typeof result.firmwareVersion !== 'string'
-  ) {
-    throw new Error('The backend did not confirm the uploaded firmware and product versions.');
+  if (typeof result.firmwareVersion !== 'string') {
+    throw new Error('The backend did not confirm the uploaded firmware version.');
   }
 
   return result;
